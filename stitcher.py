@@ -18,9 +18,6 @@ nucleotides = ['A', 'T', 'C', 'G']
 nuc_dict = {'A':0, 'T':1, 'C':2, 'G':3, 'N': 4}
 np.seterr(divide='ignore')
 
-import rpy2.robjects as robjects
-from rpy2.robjects.packages import STAP
-
 def make_ll_array(e):
     y = np.array([e[0]/3,e[0]/3,e[0]/3,e[0]/3])
     if e[1] != 4:
@@ -327,7 +324,7 @@ def create_write_function(filename, bamfile, version):
 def extract(d, keys):
     return dict((k, d[k]) for k in keys if k in d)
 
-def construct_stitched_molecules(infile, outfile,gtffile,counts, cells, contig, threads, q, version):
+def construct_stitched_molecules(infile, outfile,gtffile, cells, contig, threads, q, version):
 
 
     if cells is not None:
@@ -351,22 +348,6 @@ def construct_stitched_molecules(infile, outfile,gtffile,counts, cells, contig, 
                     gene_list.append({'gene_id': l[8].split(' ')[1].replace('"', '').strip(';'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
     gene_df = pd.DataFrame(gene_list)
     gene_df.index = gene_df['gene_id']
-    if counts is not None:
-        mfunc = 'to_df <- function(dobj){return(as.data.frame(as.matrix(dobj)))}'
-        rsparse2pandas = STAP(mfunc, "to_df")
-        readRDS = robjects.r['readRDS']
-        zumis_data = readRDS(counts)
-        zd = dict(zip(zumis_data.names, list(zumis_data)))
-
-        for key in ['readcount']:#, 'readcount']:
-            zd[key] = dict(zip(zd[key].names, list(zd[key])))
-            zd[key]['inex'] = dict(zip(zd[key]['inex'].names, list(zd[key]['inex'])))
-            zd[key]['inex']['all'] = rsparse2pandas.to_df(zd[key]['inex']['all'])
-
-        total_counts = zd['readcount']['inex']['all'].sum(axis=1).sort_values(ascending=False)
-        total_counts.name = 'total_counts'
-        
-        gene_df = gene_df.join(total_counts).fillna(0).sort_values('total_counts', ascending=False)
         
     params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,q) for g,gene in gene_df.iterrows())
 
@@ -378,7 +359,6 @@ if __name__ == '__main__':
     parser.add_argument('-i','--input',metavar='input', type=str, help='Input .bam file')
     parser.add_argument('-o','--output', metavar='output', type=str, help='Output .sam file')
     parser.add_argument('-g','--gtf', metavar='gtf', type=str, help='gtf file with gene information')
-    parser.add_argument('--counts', metavar='counts', type=str, help='zUMIs .rds file with read counts')
     parser.add_argument('-t', '--threads', metavar='threads', type=int, default=1, help='Number of threads')
     parser.add_argument('--cells', default=None, metavar='cells', type=str, help='List of cell barcodes to stitch molecules')
     parser.add_argument('--contig', default=None, metavar='contig', type=str, help='Restrict stitching to contig')
@@ -393,7 +373,6 @@ if __name__ == '__main__':
     gtffile = args.gtf  
     if gtffile is None:
         raise Exception('No gtf file provided.')
-    counts = args.counts
     threads = int(args.threads)
     cells = args.cells
     contig = args.contig
@@ -405,7 +384,7 @@ if __name__ == '__main__':
     print('Stitching reads for {}'.format(infile))
     
     start = time.time()
-    construct_stitched_molecules(infile, outfile, gtffile,counts, cells, contig, threads,q, __version__)
+    construct_stitched_molecules(infile, outfile, gtffile, cells, contig, threads,q, __version__)
     q.put((None,None))
     p.join()
     end = time.time()
