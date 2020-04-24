@@ -12,13 +12,12 @@ pysam
 joblib
 pygtrie
 portion
-rpy2
 ```
 No further installation is needed.
 
 ## Usage
 
-stitcher.py [-h] [--i input] [--o output] [--g gtf] [--counts counts] 
+stitcher.py [-h] [--i input] [--o output] [--g gtf] 
             [--t threads] [--cells cells] [--contig contig] [v]
 
 **arguments:**
@@ -27,7 +26,6 @@ stitcher.py [-h] [--i input] [--o output] [--g gtf] [--counts counts]
   --i input        Input .bam file
   --o output       Output .sam file
   --g gtf          gtf file with gene information
-  --counts counts  zUMIs .rds file with read counts 
   --t threads      Number of threads
   --cells cells    List of cell barcodes to stitch molecules (text file, one cell barcode per line).
   --contig contig  Restrict stitching to contig
@@ -35,7 +33,7 @@ stitcher.py [-h] [--i input] [--o output] [--g gtf] [--counts counts]
 ```
 ## Input
 
-_stitcher.py_ takes .bam file processed with zUMIs => 2.6.0, together with a gtf file and the zUMIs .rds expression file, to reconstruct molecules for the genes in the gtf file.
+_stitcher.py_ takes .bam file processed with zUMIs => 2.6.0 together with a gtf file to reconstruct molecules for the genes in the gtf file.
 
 As optional parameter, the user can specify the number of threads used for parallelization, the cells to process, and restrict the reconstruction to a given contig.
 
@@ -62,5 +60,5 @@ IL : Conflict in the reconstruction, the intervals where there is a conflict. Wr
 ## Example 
 
 ```
-python3 stitcher.py --i smartseq3_file.bam --o smartseq3_molecules.sam --counts zUMIs_output/expression/Smartseq3.dgecounts.rds --g Mus_musculus.GRCm38.91.chr.clean.gtf --t 10 --contig chr1 --cells cells.txt
+python3 stitcher.py --i smartseq3_file.bam --o smartseq3_molecules.sam --g Mus_musculus.GRCm38.91.chr.clean.gtf --t 10 --contig chr1 --cells cells.txt
 ```
