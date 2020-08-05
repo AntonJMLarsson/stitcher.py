@@ -27,6 +27,7 @@ stitcher.py [-h] [--i input] [--o output] [--g gtf]
   --i input        Input .bam file
   --o output       Output .sam file
   --g gtf          gtf file with gene information
+  --iso isoform    json file for the assigment of transcript equivalence classes
   --t threads      Number of threads
   --cells cells    List of cell barcodes to stitch molecules (text file, one cell barcode per line).
   --contig contig  Restrict stitching to contig
@@ -56,6 +57,7 @@ UB : UMI (same as zUMIs).
 EL : Locations of read ends (strand dependent).
 NC : Conflict in the reconstruction, the number of conflicting bases.
 IL : Conflict in the reconstruction, the intervals where there is a conflict. Written as start1,end1,start2,end2,...
+CT : List of transcripts compatible with the molecule
 ```
 
 ## Example 
