@@ -187,7 +187,10 @@ def get_compatible_isoforms_stitcher(mol_list, isoform_dict_json, h):
             if len(set_list) > 1:
                 del set_list[set_list.index({'intronic'})]
         mol.set_tag('CT',','.join(list(set.intersection(*set_list))))
-        new_mol_list.append((success,mol.to_string()))
+        try:
+            new_mol_list.append((success,mol.to_string()))
+        except ValueError:
+            continue
     return new_mol_list
 
 def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,q):
