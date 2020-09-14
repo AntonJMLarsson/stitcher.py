@@ -37,7 +37,8 @@ stitcher.py [-h] [--i input] [--o output] [--g gtf]
 
 _stitcher.py_ takes .bam file processed with zUMIs => 2.6.0 together with a gtf file to reconstruct molecules for the genes in the gtf file.
 
-As optional parameter, the user can specify the number of threads used for parallelization, the cells to process, and restrict the reconstruction to a given contig.
+As optional parameter, the user can specify the number of threads used for parallelization, the cells to process, and restrict the reconstruction to a given contig. You can find pre-processed .json files here: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4028428.svg)](https://doi.org/10.5281/zenodo.4028428)
+
 
 ## Output 
 
