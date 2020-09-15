@@ -70,6 +70,8 @@ python3 stitcher.py --i smartseq3_file.bam --o smartseq3_molecules.bam --g Mus_m
 
 _gtf_to_json.py_ is a helper script which takes the gtf file you are using as an input and writes the json file you need for _stitcher.py_ as output. There is a database file written as an intermediary file required by the gffutils package. Use this script if you have a custom gtf file or want to be extra careful.
 
+You can find pre-processed .json files here: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4028428.svg)](https://doi.org/10.5281/zenodo.4028428)
+
 ### Usage 
 gtf_to_json.py [-h] [-g gtf] [-d db] [-j json] [-t threads]
 **arguments:**
