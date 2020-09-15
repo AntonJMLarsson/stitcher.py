@@ -66,3 +66,22 @@ CT : List of transcripts compatible with the molecule
 ```
 python3 stitcher.py --i smartseq3_file.bam --o smartseq3_molecules.bam --g Mus_musculus.GRCm38.91.chr.clean.gtf --isoform mm10_unique_intervals_for_isoforms.json --t 10 --contig chr1 --cells cells.txt
 ```
+## gtf_to_json.py
+
+_gtf_to_json.py_ is a helper script which takes the gtf file you are using as an input and writes the json file you need for _stitcher.py_ as output. There is a database file written as an intermediary file required by the gffutils package. Use this script if you have a custom gtf file or want to be extra careful.
+
+### Usage 
+gtf_to_json.py [-h] [-g gtf] [-d db] [-j json] [-t threads]
+**arguments:**
+```
+  -h, --help            show this help message and exit
+  -g gtf, --gtf gtf     Input gtf file
+  -d db, --db db        Intermediary database (db) file
+  -j json, --json json  Output json file
+  -t threads, --threads threads Number of threads
+```
+### Example
+```
+python3 gtf_to_json.py -g /mnt/davidson/hendgert/resources/genomes/diySpikes/diySpike.gtf -d diySpike.db -j diySpike.json -t 2
+
+```
