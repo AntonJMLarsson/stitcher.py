@@ -82,6 +82,6 @@ gtf_to_json.py [-h] [-g gtf] [-d db] [-j json] [-t threads]
 ```
 ### Example
 ```
-python3 gtf_to_json.py -g /mnt/davidson/hendgert/resources/genomes/diySpikes/diySpike.gtf -d diySpike.db -j diySpike.json -t 2
+python3 gtf_to_json.py -g Mus_musculus.GRCm38.91.chr.clean.gtf -d Mus_musculus.GRCm38.91.chr.clean.db -j Mus_musculus.GRCm38.91.chr.clean.json -t 2
 
 ```
