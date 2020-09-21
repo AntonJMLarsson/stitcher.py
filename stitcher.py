@@ -186,8 +186,8 @@ def get_compatible_isoforms_stitcher(mol_list, isoform_dict_json, h):
         if {'intronic'} in set_list:
             if len(set_list) > 1:
                 del set_list[set_list.index({'intronic'})]
-        mol.set_tag('CT',','.join(list(set.intersection(*set_list))))
         try:
+            mol.set_tag('CT',','.join(list(set.intersection(*set_list))))
             new_mol_list.append((success,mol.to_string()))
         except ValueError:
             continue
