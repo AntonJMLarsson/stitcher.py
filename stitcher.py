@@ -189,7 +189,7 @@ def get_compatible_isoforms_stitcher(mol_list, isoform_dict_json, h):
         try:
             mol.set_tag('CT',','.join(list(set.intersection(*set_list))))
             new_mol_list.append((success,mol.to_string()))
-        except ValueError:
+        except:
             continue
     return new_mol_list
 
