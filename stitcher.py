@@ -74,7 +74,7 @@ def get_skipped_tuples(cigtuples, ref_positions):
             skipped_locs.append((ref_positions[l-1]+1, ref_positions[l]-1))
     return skipped_locs
 
-def stitch_reads(read_d, mol_dict=None, cell = None, gene = None, umi = None):
+def stitch_reads(read_d, mol_dict=None, cell = None, gene = None, umi = None, single_end):
     if len(read_d) == 1:
         return (True, read_d.to_string())
     master_read = {}
@@ -112,9 +112,11 @@ def stitch_reads(read_d, mol_dict=None, cell = None, gene = None, umi = None):
         skipped_intervals = get_skipped_tuples(cigtuples, ref_positions)
 
         if mol_dict is None:
-            if read.is_read1:
+            if read.is_read1 and not single_end:
                 reverse_read1.append(read.is_reverse)
-            else:
+            elif single_end:
+                reverse_read1.append(read.is_reverse)
+            elif not single_end:
                 read_starts[i] = read.reference_start
                 read_ends[i] = read.reference_end
         else:
