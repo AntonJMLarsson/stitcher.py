@@ -238,13 +238,12 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,single_en
                 else:
                     readtrie[node] = [read]
         else:
-            if read.is_paired and not read.is_unmapped and not read.mate_is_unmapped and gene == gene_of_interest \
-        and read.is_proper_pair:
-            node = '{}/{}/{}'.format(cell,gene,umi)
-            if readtrie.has_node(node):
-                readtrie[node].append(read)
-            else:
-                readtrie[node] = [read]
+            if read.is_paired and not read.is_unmapped and not read.mate_is_unmapped and gene == gene_of_interest and read.is_proper_pair:
+                node = '{}/{}/{}'.format(cell,gene,umi)
+                if readtrie.has_node(node):
+                    readtrie[node].append(read)
+                else:
+                    readtrie[node] = [read]
     mol_list = []
     mol_append = mol_list.append
     for node, mol in readtrie.iteritems():
