@@ -75,6 +75,8 @@ def get_skipped_tuples(cigtuples, ref_positions):
     return skipped_locs
 
 def stitch_reads(read_d, mol_dict=None, cell = None, gene = None, umi = None):
+    if len(read_d) == 1:
+        return (True, read_d.to_string())
     master_read = {}
     seq_df = None
     qual_df = None
