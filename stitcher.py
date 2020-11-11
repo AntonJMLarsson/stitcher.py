@@ -254,9 +254,9 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,single_en
         info = node.split('/')
         read_names = [r.query_name for r in mol]
         if 2*len(set(read_names)) == len(mol) and not single_end:
-            mol_append(stitch_reads(mol, None, info[0], info[1], info[2]))
+            mol_append(stitch_reads(mol, None, info[0], info[1], info[2], single_end))
         elif single_end:
-            mol_append(stitch_reads(mol, None, info[0], info[1], info[2]))
+            mol_append(stitch_reads(mol, None, info[0], info[1], info[2], single_end))
         else:
             mol_append((False, '{} does not have all reads within the annotated gene\n'.format(node)))
     del readtrie
