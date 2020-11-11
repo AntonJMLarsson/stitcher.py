@@ -193,7 +193,7 @@ def get_compatible_isoforms_stitcher(mol_list, isoform_dict_json, h):
             continue
     return new_mol_list
 
-def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,q):
+def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,single_end,q):
     readtrie = pygtrie.StringTrie()
     bam = pysam.AlignmentFile(bamfile, 'rb')
     gene_of_interest = gene_to_stitch['gene_id']
@@ -230,7 +230,15 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,q):
                 continue
         else:
             continue
-        if read.is_paired and not read.is_unmapped and not read.mate_is_unmapped and gene == gene_of_interest \
+        if single_end:
+            if gene == gene_of_interest and not read.is_unmapped:
+                node = '{}/{}/{}'.format(cell,gene,umi)
+                if readtrie.has_node(node):
+                    readtrie[node].append(read)
+                else:
+                    readtrie[node] = [read]
+        else:
+            if read.is_paired and not read.is_unmapped and not read.mate_is_unmapped and gene == gene_of_interest \
         and read.is_proper_pair:
             node = '{}/{}/{}'.format(cell,gene,umi)
             if readtrie.has_node(node):
@@ -242,7 +250,9 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,q):
     for node, mol in readtrie.iteritems():
         info = node.split('/')
         read_names = [r.query_name for r in mol]
-        if 2*len(set(read_names)) == len(mol):
+        if 2*len(set(read_names)) == len(mol) and not single_end:
+            mol_append(stitch_reads(mol, None, info[0], info[1], info[2]))
+        elif single_end:
             mol_append(stitch_reads(mol, None, info[0], info[1], info[2]))
         else:
             mol_append((False, '{} does not have all reads within the annotated gene\n'.format(node)))
@@ -345,7 +355,7 @@ def create_write_function(filename, bamfile, version):
 def extract(d, keys):
     return dict((k, d[k]) for k in keys if k in d)
 
-def construct_stitched_molecules(infile, outfile,gtffile,isoformfile ,cells, contig, threads, q, version):
+def construct_stitched_molecules(infile, outfile,gtffile,isoformfile ,cells, contig, threads, single_end, q, version):
 
 
     if cells is not None:
@@ -373,7 +383,7 @@ def construct_stitched_molecules(infile, outfile,gtffile,isoformfile ,cells, con
     with open(isoformfile) as json_file:
         isoform_unique_intervals = json.load(json_file)
 
-    params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,isoform_unique_intervals[g], q) for g,gene in gene_df.iterrows())
+    params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,isoform_unique_intervals[g],single_end, q) for g,gene in gene_df.iterrows())
 
 
     return None
@@ -385,6 +395,7 @@ if __name__ == '__main__':
     parser.add_argument('-g','--gtf', metavar='gtf', type=str, help='gtf file with gene information')
     parser.add_argument('-iso','--isoform',metavar='iso', type=str, help='json file with isoform information')
     parser.add_argument('-t', '--threads', metavar='threads', type=int, default=1, help='Number of threads')
+    parser.add_argument('--single-end', action='store_true', help='Activate flag if data is single-end')
     parser.add_argument('--cells', default=None, metavar='cells', type=str, help='List of cell barcodes to stitch molecules')
     parser.add_argument('--contig', default=None, metavar='contig', type=str, help='Restrict stitching to contig')
     parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + __version__)
@@ -402,6 +413,7 @@ if __name__ == '__main__':
     threads = int(args.threads)
     cells = args.cells
     contig = args.contig
+    single_end = args.single_end
     m = Manager()
     q = m.JoinableQueue()
     p = Process(target=create_write_function(filename=outfile, bamfile=infile, version=__version__), args=(q,))
@@ -410,7 +422,7 @@ if __name__ == '__main__':
     print('Stitching reads for {}'.format(infile))
     
     start = time.time()
-    construct_stitched_molecules(infile, outfile, gtffile, isoformfile, cells, contig, threads,q, __version__)
+    construct_stitched_molecules(infile, outfile, gtffile, isoformfile, cells, contig, threads,single_end,q, __version__)
     q.put((None,None))
     p.join()
     end = time.time()
