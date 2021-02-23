@@ -63,6 +63,7 @@ NC : Conflict in the reconstruction, the number of conflicting bases.
 IL : Conflict in the reconstruction, the intervals where there is a conflict. Written as start1,end1,start2,end2,...
 CT : List of transcripts compatible with the molecule
 ```
+If the molecule is entirely in an intron (this may happen due to internal priming events), the CT tag is simply 'intronic'. Additionally, if there is no transcript consistent with the positions the molecule cover, the CT tag is an empty string.
 
 ## Example 
 
