@@ -18,8 +18,9 @@ No further installation is needed.
 
 ## Usage
 
-stitcher.py [-h] [--i input] [--o output] [--g gtf] 
-            [--t threads] [--cells cells] [--contig contig] [v]
+usage: stitcher.py [-h] [-i input] [-o output] [-g gtf] [-iso iso] [-jun jun]
+                   [-t threads] [--single-end] [--cells cells]
+                   [--contig contig] [-v]
 
 **arguments:**
 ```
@@ -27,7 +28,8 @@ stitcher.py [-h] [--i input] [--o output] [--g gtf]
   --i input        Input .bam file
   --o output       Output .bam file
   --g gtf          gtf file with gene information
-  --iso isoform    json file for the assigment of transcript equivalence classes
+  -iso iso, --isoform iso json file with isoform information
+  -jun jun, --junction jun json file with exon-exon structure
   --t threads      Number of threads
   --cells cells    List of cell barcodes to stitch molecules (text file, one cell barcode per line).
   --contig contig  Restrict stitching to contig
@@ -39,7 +41,7 @@ _stitcher.py_ takes .bam file processed with zUMIs => 2.6.0 together with a gtf 
 
 As optional parameter, the user can specify the number of threads used for parallelization, the cells to process, and restrict the reconstruction to a given contig.
 
-You can find pre-processed .json files here: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4028428.svg)](https://doi.org/10.5281/zenodo.4028428)
+You can find pre-processed .json files here: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4548731.svg)](https://doi.org/10.5281/zenodo.4548731)
 
 ## Output 
 
@@ -71,7 +73,8 @@ python3 stitcher.py --i smartseq3_file.bam --o smartseq3_molecules.bam --g Mus_m
 
 _gtf_to_json.py_ is a helper script which takes the gtf file you are using as an input and writes the json file you need for _stitcher.py_ as output. There is a database file written as an intermediary file required by the gffutils package. Use this script if you have a custom gtf file or want to be extra careful.
 
-You can find pre-processed .json files here: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4028428.svg)](https://doi.org/10.5281/zenodo.4028428)
+You can find pre-processed .json files here: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4548731.svg)](https://doi.org/10.5281/zenodo.4548731)
+
 
 ### Usage 
 gtf_to_json.py [-h] [-g gtf] [-d db] [-j json] [-t threads]
@@ -80,7 +83,8 @@ gtf_to_json.py [-h] [-g gtf] [-d db] [-j json] [-t threads]
   -h, --help            show this help message and exit
   -g gtf, --gtf gtf     Input gtf file
   -d db, --db db        Intermediary database (db) file
-  -j json, --json json  Output json file
+  -ji json, --json_intervals json Output json file for coverage
+  -jr json, --json_refskip json Output json file for refskip
   -t threads, --threads threads Number of threads
 ```
 ### Example
