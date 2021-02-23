@@ -82,5 +82,5 @@ if __name__ == '__main__':
     with open(jsonfile_1, 'w') as fp:
         json.dump(isoform_unique_intervals_for_json_dump, fp)
     print('Writing unique isoform refskip to json file {}'.format(jsonfile_2))
-    with open(jsonfile_1, 'w') as fp:
+    with open(jsonfile_2, 'w') as fp:
         json.dump(isoform_unique_refskip_for_json_dump, fp)
