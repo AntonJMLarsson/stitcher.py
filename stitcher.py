@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# V 1.0
+# V 2.0
 # anton jm larsson anton.larsson@ki.se
 import argparse
 import pysam
@@ -12,13 +12,18 @@ import sys
 import time
 import os
 import json
+from scipy.special import logsumexp
 from joblib import delayed,Parallel
 from multiprocessing import Process, Manager
-__version__ = '1.0'
+__version__ = '2.0'
 nucleotides = ['A', 'T', 'C', 'G']
 nuc_dict = {'A':0, 'T':1, 'C':2, 'G':3, 'N': 4}
 np.seterr(divide='ignore')
-
+ll_this_correct = {i:np.log(1-10**(-float(i)/10)) for i in range(1,94)}
+ln_3 = np.log(3)
+ll_other_correct = {i:-(float(i)*np.log(10))/10 - ln_3 for i in range(1,94)}
+ll_N = -np.log(4)
+from scipy.sparse import csc_matrix
 def make_ll_array(e):
     y = np.array([e[0]/3,e[0]/3,e[0]/3,e[0]/3])
     if e[1] != 4:
@@ -74,9 +79,14 @@ def get_skipped_tuples(cigtuples, ref_positions):
             skipped_locs.append((ref_positions[l-1]+1, ref_positions[l]-1))
     return skipped_locs
 
-def stitch_reads(read_d, single_end, mol_dict=None, cell = None, gene = None, umi = None):
-    if len(read_d) == 1:
-        return (True, read_d[0].to_string())
+def using_indexed_assignment(x):
+    "https://stackoverflow.com/a/5284703/190597 (Sven Marnach)"
+    result = np.empty(len(x), dtype=int)
+    temp = x.argsort()
+    result[temp] = np.arange(len(x))
+    return result
+
+def stitch_reads(read_d, single_end, cell, gene, umi):
     master_read = {}
     seq_df = None
     qual_df = None
@@ -86,8 +96,10 @@ def stitch_reads(read_d, single_end, mol_dict=None, cell = None, gene = None, um
     read_starts = [0]*nreads
     exonic_list = [0]*nreads
     intronic_list = [0]*nreads
-    seq_series_list = []
-    qual_series_list = []
+    seq_list = []
+    qual_list = []
+    ref_pos_set = set()
+    ref_pos_list = []
     for i,read in enumerate(read_d):
         if read.has_tag('GE'):
             exonic = True
@@ -97,71 +109,83 @@ def stitch_reads(read_d, single_end, mol_dict=None, cell = None, gene = None, um
             intronic = True
         else:
             intronic = False
-        p_x = list(10**(-np.float_(np.array(read.query_alignment_qualities))/10))
-        seq = [nuc_dict[c] for c in read.query_alignment_sequence]
+
+        Q_list = list(read.query_alignment_qualities)
+        seq = read.query_alignment_sequence
         cigtuples = read.cigartuples
         insertion_locs = get_insertions_locs(cigtuples)
         try:
             for loc in insertion_locs:
-                    del seq[loc]
-                    del p_x[loc]
+                seq = seq[:loc] + seq[(loc+1):]
+                del Q_list[loc]
         except IndexError:
-            return (False, read.query_name + '\n')
             continue
+
         ref_positions = read.get_reference_positions()
         skipped_intervals = get_skipped_tuples(cigtuples, ref_positions)
 
-        if mol_dict is None:
-            if read.is_read1 and not single_end:
-                reverse_read1.append(read.is_reverse)
-            elif single_end:
-                reverse_read1.append(read.is_reverse)
-            elif not single_end:
-                read_starts[i] = read.reference_start
-                read_ends[i] = read.reference_end
-        else:
-            if mol_dict[cell][gene][umi].is_reverse:
-                if not read.is_reverse:
-                    read_starts[i] = read.reference_start
-            else:
-                if read.is_reverse:
-                    read_ends[i] = read.reference_end
+        if read.is_read1 and not single_end and read.get_tag('UB') != '':
+            reverse_read1.append(read.is_reverse)
+        elif single_end:
+            reverse_read1.append(read.is_reverse)
+
         exonic_list[i] = exonic
         intronic_list[i] = intronic
-        seq_series = pd.Series(seq, index=ref_positions)
-        seq_series.name = read.query_name
-        seq_series_list.append(seq_series)
-        qual_series = pd.Series(p_x, index=ref_positions)
-        qual_series.name = read.query_name
-        qual_series_list.append(qual_series)
+
+        seq_list.append(seq)
+
+        qual_list.append(Q_list)
+
+        ref_pos_list.append(ref_positions)
+
+        ref_pos_set = ref_pos_set | set(ref_positions)
+
+
         if len(master_read) == 0:
             master_read['skipped_intervals'] = skipped_intervals
         else:
             master_read['skipped_intervals'].extend(skipped_intervals)
-    master_read['SN'] = read.reference_name
-    qual_df = pd.DataFrame(qual_series_list).fillna(3).transpose()
-    seq_df = pd.DataFrame(seq_series_list).fillna(4).astype(int).transpose()
-    merged_df = pd.DataFrame(np.rec.fromarrays((qual_df.values, seq_df.values)).tolist(),
-                      columns=qual_df.columns,
-                      index=qual_df.index)
 
-    qual_probs = 10**(merged_df.applymap(make_ll_array).apply(lambda x: np.concatenate(list(x))).sum(axis=1)).values.reshape(qual_df.shape[0], 4)
+    sparse_row_dict = {b:[] for b in nucleotides}
+    sparse_col_dict = {b:[] for b in nucleotides}
+    sparse_ll_dict = {b:[] for b in nucleotides}
 
-    normed_probs = qual_probs/qual_probs.sum(axis=1)[:, np.newaxis]
-    prob_max = np.max(normed_probs, axis=1)
-    master_read['seq'] = ''.join([nucleotides[x] if p > 0.3 else 'N' for p, x in zip(prob_max, np.argmax(normed_probs, axis=1))])
+    ref_pos_set_array = np.array(list(ref_pos_set))
+
+    ref_to_pos_dict = {p:o for p,o in zip(ref_pos_set_array,using_indexed_assignment(ref_pos_set_array))}
+
+    for i, (seq, Q_list, ref_positions) in enumerate(zip(seq_list, qual_list, ref_pos_list)):
+        for b1, Q, pos in zip(seq,Q_list, ref_positions):
+            for b2 in nucleotides:
+                sparse_row_dict[b2].append(i)
+                sparse_col_dict[b2].append(ref_to_pos_dict[pos])
+                if b1 == b2:
+                    sparse_ll_dict[b2].append(ll_this_correct[Q])
+                elif b1 == 'N':
+                    sparse_ll_dict[b2].append(ll_N)
+                else:
+                    sparse_ll_dict[b2].append(ll_other_correct[Q])
+    sparse_csc_dict = {b:csc_matrix((sparse_ll_dict[b], (sparse_row_dict[b],sparse_col_dict[b])), shape=(i+1,len(ref_pos_set_array))) for b in nucleotides}
+
+    ll_list = [m.sum(axis=0) for m in sparse_csc_dict.values()]
+    ll_sums = np.stack(ll_list)
+
+    full_ll = logsumexp(ll_sums, axis=0)
+
+    prob_max = np.asarray(np.exp(np.amax(ll_sums, axis=0) - full_ll)).ravel()
+    nuc_max = np.asarray(np.argmax(ll_sums, axis=0)).ravel()
+
+    master_read['seq'] = ''.join([nucleotides[x] if p > 0.3 else 'N' for p, x in zip(prob_max, nuc_max)])
     master_read['phred'] = np.nan_to_num(np.rint(-10*np.log10(1-prob_max+1e-13)))
-    if mol_dict is None:
-        v, c = np.unique(reverse_read1, return_counts=True)
-        m = c.argmax()
-        master_read['is_reverse'] = v[m]
-    else:
-        master_read['is_reverse'] = mol_dict[cell][gene][umi].is_reverse
-    if master_read['is_reverse']:
-        master_read['ends'] = list(set(read_starts)-{0})
-    else:
-        master_read['ends'] = list(set(read_ends)-{0})
-    master_read['ref_intervals'] = interval(intervals_extract(seq_df.index.values))
+
+    if len(reverse_read1) == 0:
+        return (False, ':'.join([gene,cell,umi]))
+    v, c = np.unique(reverse_read1, return_counts=True)
+    m = c.argmax()
+
+    master_read['SN'] = read.reference_name
+    master_read['is_reverse'] = v[m]
+    master_read['ref_intervals'] = interval(intervals_extract(np.sort(ref_pos_set_array)))
     master_read['skipped_intervals'] = interval(list(set(master_read['skipped_intervals'])))
     master_read['del_intervals'] =  ~(master_read['ref_intervals'] | master_read['skipped_intervals'])
     master_read['NR'] = nreads
@@ -172,32 +196,51 @@ def stitch_reads(read_d, single_end, mol_dict=None, cell = None, gene = None, um
     master_read['umi'] = umi
     return (True, convert_to_sam(master_read))
 
-def get_compatible_isoforms_stitcher(mol_list, isoform_dict_json, h):
+def get_compatible_isoforms_stitcher(mol_list, isoform_dict_json,refskip_dict_json, h):
     isoform_dict = P.IntervalDict()
     for i,s in isoform_dict_json.items():
         isoform_dict[P.from_string(i, conv=int)] = set(s.split(','))
+    refskip_dict = P.IntervalDict()
+    for i,s in refskip_dict_json.items():
+        refskip_dict[P.from_string(i, conv=int)] = set(s.split(','))
+    
     compatible_isoforms_trie = dict()
     new_mol_list = []
-    for success, mol in [(s,pysam.AlignedRead.fromstring(m,h)) for s,m in mol_list]:
+    for success, m in mol_list:
         if not success:
-            if type(mol) == 'str':
-                new_mol_list.append((success,mol))
+            if type(m) is str:
+                new_mol_list.append((success,m))
             else:
-                new_mol_list.append((success,mol.to_string()))
+                new_mol_list.append((success,m.to_string()))
             continue
+        mol = pysam.AlignedRead.fromstring(m,h)
         i = interval(intervals_extract(mol.get_reference_positions()))
+        refskip_cigar = [t[0] for t in mol.cigartuples if t[1] > 0 and t[0] in [2,3]]
+        blocks = mol.get_blocks()
+        j = []
+        for n in range(len(blocks)-1):
+            if refskip_cigar[n] == 3:
+                j.append((blocks[n][1],blocks[n+1][0]))
+        j = interval(j)
         set_list = [s for k,s in isoform_dict.get(i, default={'intronic'}).items() if len(list(P.iterate(k, step=1))) > 4]
+        set_refskip_list = [s for k,s in refskip_dict.get(j, default={'intronic'}).items() if len(list(P.iterate(k, step=1))) > 4]
         if {'intronic'} in set_list:
             if len(set_list) > 1:
                 del set_list[set_list.index({'intronic'})]
+        if {'intronic'} in set_refskip_list:
+            if len(set_refskip_list) > 1:
+                del set_refskip_list[set_refskip_list.index({'intronic'})]
         try:
-            mol.set_tag('CT',','.join(list(set.intersection(*set_list))))
+            if len(set_refskip_list) > 0:
+                mol.set_tag('CT',','.join(list(set.intersection(*set_list).intersection(*set_refskip_list))))
+            else:
+                mol.set_tag('CT',','.join(list(set.intersection(*set_list))))
             new_mol_list.append((success,mol.to_string()))
         except:
             continue
     return new_mol_list
 
-def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,single_end,q):
+def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,refskip_dict_json,single_end,q):
     readtrie = pygtrie.StringTrie()
     bam = pysam.AlignmentFile(bamfile, 'rb')
     gene_of_interest = gene_to_stitch['gene_id']
@@ -209,31 +252,31 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,single_en
         umi = read.get_tag('UB')
         if umi == '':
             continue
-        if read.has_tag('GE'):
-            gene_exon = read.get_tag('GE')
         else:
-            gene_exon = 'Unassigned'
-        if read.has_tag('GI'):
-            gene_intron = read.get_tag('GI')
-        else:
-            gene_intron = 'Unassigned'
-
-        # if it maps to the intron or exon of a gene
-        if gene_intron != 'Unassigned' or gene_exon != 'Unassigned':
-            # if it is a junction read
-            if gene_intron == gene_exon:
-                gene = gene_intron
-            # if it's an only intronic read
-            elif gene_intron != 'Unassigned' and gene_exon == 'Unassigned':
-                gene = gene_intron
-            # if it's an only exonic read
-            elif gene_exon != 'Unassigned' and gene_intron == 'Unassigned':
-                gene = gene_exon
-            # if the exon and intron gene tag contradict each other
+            if read.has_tag('GE'):
+                gene_exon = read.get_tag('GE')
+            else:
+                gene_exon = 'Unassigned'
+            if read.has_tag('GI'):
+                gene_intron = read.get_tag('GI')
+            else:
+                gene_intron = 'Unassigned'
+            # if it maps to the intron or exon of a gene
+            if gene_intron != 'Unassigned' or gene_exon != 'Unassigned':
+                # if it is a junction read
+                if gene_intron == gene_exon:
+                    gene = gene_intron
+                    # if it's an only intronic read
+                elif gene_intron != 'Unassigned' and gene_exon == 'Unassigned':
+                    gene = gene_intron
+                    # if it's an only exonic read
+                elif gene_exon != 'Unassigned' and gene_intron == 'Unassigned':
+                    gene = gene_exon
+                    # if the exon and intron gene tag contradict each other
+                else:
+                    continue
             else:
                 continue
-        else:
-            continue
         if single_end:
             if gene == gene_of_interest and not read.is_unmapped:
                 node = '{}/{}/{}'.format(cell,gene,umi)
@@ -252,15 +295,11 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,single_en
     mol_append = mol_list.append
     for node, mol in readtrie.iteritems():
         info = node.split('/')
-        read_names = [r.query_name for r in mol]
-        if 2*len(set(read_names)) == len(mol) and not single_end:
-            mol_append(stitch_reads(mol, single_end, None, info[0], info[1], info[2]))
-        elif single_end:
-            mol_append(stitch_reads(mol, single_end, None, info[0], info[1], info[2]))
-        else:
-            mol_append((False, '{} does not have all reads within the annotated gene\n'.format(node)))
+        n_read1 = np.sum([(r.is_read1)&(r.get_tag('UB') != '') for r in mol])
+        if n_read1 > 0:
+            mol_append(stitch_reads(mol, single_end, info[0], info[1], info[2]))
     del readtrie
-    mol_list = get_compatible_isoforms_stitcher(mol_list, isoform_dict_json, bam.header)
+    mol_list = get_compatible_isoforms_stitcher(mol_list, isoform_dict_json,refskip_dict_json, bam.header)
     q.put((True, mol_list))
     return gene_of_interest
 
@@ -287,14 +326,14 @@ def make_POS_and_CIGAR(stitched_m):
         del_tuples = [(i[1] if i[0] else i[1]+1, i[2] if i[3] else i[2]-1) for i in P.to_data(stitched_m['del_intervals'])[1:-1]]
     POS = ref_tuples[0][0] + 1
     tuple_dict = {'M': ref_tuples, 'N': skipped_tuples, 'D': del_tuples}
-    l = []
     while sum(len(t) for t in tuple_dict.values()) > 0:
         pos_dict = {k:v[0][0] for k,v in tuple_dict.items() if len(v) > 0}
         c = min(pos_dict, key=pos_dict.get)
         n_bases = np.int_(tuple_dict[c[0]][0][1]-tuple_dict[c[0]][0][0])+1
+        if n_bases == 0:
+            del tuple_dict[c[0]][0]
+            continue
         CIGAR += '{}{}'.format(n_bases,c[0])
-        if c[0] == 'M':
-            l.append(n_bases)
         del tuple_dict[c[0]][0]
     return POS, CIGAR, conflict, nreads_conflict, interval_list
 
@@ -318,11 +357,11 @@ def convert_to_sam(stitched_m):
     sam_dict['BC'] = 'BC:Z:{}'.format(stitched_m['cell'])
     sam_dict['XT'] = 'XT:Z:{}'.format(stitched_m['gene'])
     sam_dict['UB'] = 'UB:Z:{}'.format(stitched_m['umi'])
-    sam_dict['EL'] = 'EL:B:I,{}'.format(','.join([str(e) for e in stitched_m['ends']]))
+    #sam_dict['EL'] = 'EL:B:I,{}'.format(','.join([str(e) for e in stitched_m['ends']]))
     if conflict:
         sam_dict['NC'] = 'NC:i:{}'.format(nreads_conflict)
         sam_dict['IL'] = 'IL:B:I,{}'.format(','.join([str(e) for e in interval_list]))
-    return '\t'.join(list(sam_dict.values())) + '\n'
+    return '\t'.join(list(sam_dict.values()))
 
 def yield_reads(read_dict):
     for cell in read_dict:
@@ -357,15 +396,13 @@ def create_write_function(filename, bamfile, version):
 
 def extract(d, keys):
     return dict((k, d[k]) for k in keys if k in d)
-
-def construct_stitched_molecules(infile, outfile,gtffile,isoformfile ,cells, contig, threads, single_end, q, version):
-
-
+    
+def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfile, cells, contig, threads, single_end, q, version):
     if cells is not None:
         cell_set = set([line.rstrip() for line in open(cells)])
     else:
         cell_set = None
-
+    print('Reading gene info from {}'.format(gtffile))
     gene_list = []
     with open(gtffile, 'r') as f:
         for line in f:
@@ -383,10 +420,12 @@ def construct_stitched_molecules(infile, outfile,gtffile,isoformfile ,cells, con
     gene_df = pd.DataFrame(gene_list)
     gene_df.index = gene_df['gene_id']
 
+    print('Reading isoform info from {}'.format(isoformfile))
     with open(isoformfile) as json_file:
         isoform_unique_intervals = json.load(json_file)
-
-    params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,isoform_unique_intervals[g],single_end, q) for g,gene in gene_df.iterrows())
+    with open(junctionfile) as json_file:
+        refskip_unique_intervals = json.load(json_file)
+    params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,isoform_unique_intervals[g],refskip_unique_intervals[g],single_end, q) for g,gene in gene_df.iterrows())
 
 
     return None
@@ -394,9 +433,10 @@ def construct_stitched_molecules(infile, outfile,gtffile,isoformfile ,cells, con
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Stitch together molecules from reads sharing the same UMI')
     parser.add_argument('-i','--input',metavar='input', type=str, help='Input .bam file')
-    parser.add_argument('-o','--output', metavar='output', type=str, help='Output .sam file')
+    parser.add_argument('-o','--output', metavar='output', type=str, help='Output .bam file')
     parser.add_argument('-g','--gtf', metavar='gtf', type=str, help='gtf file with gene information')
     parser.add_argument('-iso','--isoform',metavar='iso', type=str, help='json file with isoform information')
+    parser.add_argument('-jun','--junction', metavar='jun', type=str, help='json file with exon-exon structure')
     parser.add_argument('-t', '--threads', metavar='threads', type=int, default=1, help='Number of threads')
     parser.add_argument('--single-end', action='store_true', help='Activate flag if data is single-end')
     parser.add_argument('--cells', default=None, metavar='cells', type=str, help='List of cell barcodes to stitch molecules')
@@ -413,6 +453,7 @@ if __name__ == '__main__':
     if gtffile is None:
         raise Exception('No gtf file provided.')
     isoformfile = args.isoform
+    junctionfile = args.junction
     threads = int(args.threads)
     cells = args.cells
     contig = args.contig
@@ -425,7 +466,7 @@ if __name__ == '__main__':
     print('Stitching reads for {}'.format(infile))
     
     start = time.time()
-    construct_stitched_molecules(infile, outfile, gtffile, isoformfile, cells, contig, threads,single_end,q, __version__)
+    construct_stitched_molecules(infile, outfile, gtffile, isoformfile,junctionfile, cells, contig, threads,single_end,q, __version__)
     q.put((None,None))
     p.join()
     end = time.time()
