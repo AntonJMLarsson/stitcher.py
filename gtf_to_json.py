@@ -64,7 +64,7 @@ if __name__ == '__main__':
             isoform_refskip_dict[g_id][t_id] = P.empty()
             for exon in db.children(transcript, featuretype='exon'):
                 isoform_interval_dict[g_id][t_id] = isoform_interval_dict[g_id][t_id] | P.closed(exon.start,exon.end)
-            exon_list = [exon for exon in db_local.children(transcript, featuretype='exon')]
+            exon_list = [exon for exon in db.children(transcript, featuretype='exon')]
             if gene.strand == '+':
                 for i in range(len(exon_list)-1):
                     isoform_refskip_dict[g_id][t_id] = isoform_refskip_dict[g_id][t_id] | P.closed(exon_list[i].end,exon_list[i+1].start)
