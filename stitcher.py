@@ -412,11 +412,11 @@ def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfi
             if l[2] == 'gene':
                 if contig is not None:
                     if l[0] == contig:
-                        gene_list.append({'gene_id': l[8].split(' ')[1].replace('"', '').strip(';'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
+                        gene_list.append({'gene_id': l[8].split(' ')[1].replace('"', '').strip(';\n'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
                     else:
                         continue
                 else:
-                    gene_list.append({'gene_id': l[8].split(' ')[1].replace('"', '').strip(';'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
+                    gene_list.append({'gene_id': l[8].split(' ')[1].replace('"', '').strip(';\n'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
     gene_df = pd.DataFrame(gene_list)
     gene_df.index = gene_df['gene_id']
 
