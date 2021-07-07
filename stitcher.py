@@ -30,6 +30,11 @@ def make_ll_array(e):
         y[e[1]] = 1-e[0]
     return np.log10(y)
 
+# taken from https://stackoverflow.com/questions/312443/how-do-you-split-a-list-into-evenly-sized-chunks
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
 def intervals_extract(iterable): 
     iterable = sorted(set(iterable)) 
@@ -300,7 +305,11 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,refskip_d
             mol_append(stitch_reads(mol, single_end, info[0], info[1], info[2]))
     del readtrie
     mol_list = get_compatible_isoforms_stitcher(mol_list, isoform_dict_json,refskip_dict_json, bam.header)
-    q.put((True, mol_list))
+    if len(mol_list) > 50000:
+        for m_list in chunks(mol_list, 50000):
+            q.put((True, m_list))
+    else:
+        q.put((True, mol_list))
     return gene_of_interest
 
 
