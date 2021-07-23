@@ -173,9 +173,10 @@ def stitch_reads(read_d, single_end, cell, gene, umi):
     sparse_csc_dict = {b:csc_matrix((sparse_ll_dict[b], (sparse_row_dict[b],sparse_col_dict[b])), shape=(i+1,len(ref_pos_set_array))) for b in nucleotides}
 
     ll_list = [m.sum(axis=0) for m in sparse_csc_dict.values()]
-    if len(ll_list) == 0:
+    try:
+        ll_sums = np.stack(ll_list)
+    except ValueError:
         return (False, ':'.join([gene,cell,umi]))
-    ll_sums = np.stack(ll_list)
 
     full_ll = logsumexp(ll_sums, axis=0)
 
