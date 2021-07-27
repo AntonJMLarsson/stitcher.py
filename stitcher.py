@@ -399,6 +399,7 @@ def create_write_function(filename, bamfile, version):
                         stitcher_bam.write(pysam.AlignedRead.fromstring(mol,header))
                     else:
                         error_file.write(mol)
+                error_file.write('Gene:{}'.format(pysam.AlignedRead.fromstring(mol,header).get_tag('XT')))
             q.task_done()
         q.task_done()
         error_file.close()
