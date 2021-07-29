@@ -397,17 +397,17 @@ def create_write_function(filename, bamfile, version):
             good, mol_list = q.get()
             if good is None: break
             if good:
-                mol = ''
+                g = ''
                 for success, mol in mol_list:
                     if success:
                         read = pysam.AlignedRead.fromstring(mol,header)
-                        if mol == '':
-                            mol = read.get_tag('XT')
+                        if g == '':
+                            g = read.get_tag('XT')
                         stitcher_bam.write(read)
                     else:
                         error_file.write(mol)
-                if mol != '':
-                    error_file.write('Gene:{}\n'.format(pysam.AlignedRead.fromstring(mol,header).get_tag('XT')))
+                if g != '':
+                    error_file.write('Gene:{}\n'.format(g))
             q.task_done()
         q.task_done()
         error_file.close()
