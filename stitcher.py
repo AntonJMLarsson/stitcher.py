@@ -308,6 +308,8 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,refskip_d
             mol_append(stitch_reads(mol, single_end, info[0], info[1], info[2]))
     del readtrie
     mol_list = get_compatible_isoforms_stitcher(mol_list, isoform_dict_json,refskip_dict_json, bam.header)
+    if len(mol_list) == 0:
+        return gene_of_interest
     if len(mol_list) > 50000:
         for m_list in chunks(mol_list, 50000):
             q.put((True, m_list))
@@ -387,6 +389,7 @@ def yield_reads(read_dict):
 def create_write_function(filename, bamfile, version):
     bam = pysam.AlignmentFile(bamfile, 'rb')
     header = bam.header
+    mol = ''
     def write_sam_file(q):
         error_file = open('{}_error.log'.format(os.path.splitext(filename)[0]), 'w')
         stitcher_bam = pysam.AlignmentFile(filename,'wb',header={'HD':header['HD'], 'SQ':header['SQ'], 'PG': [{'ID': 'stitcher.py','VN': '{}'.format(version)}]})
