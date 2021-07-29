@@ -389,7 +389,7 @@ def yield_reads(read_dict):
 def create_write_function(filename, bamfile, version):
     bam = pysam.AlignmentFile(bamfile, 'rb')
     header = bam.header
-    mol = ''
+    
     def write_sam_file(q):
         error_file = open('{}_error.log'.format(os.path.splitext(filename)[0]), 'w')
         stitcher_bam = pysam.AlignmentFile(filename,'wb',header={'HD':header['HD'], 'SQ':header['SQ'], 'PG': [{'ID': 'stitcher.py','VN': '{}'.format(version)}]})
@@ -397,12 +397,17 @@ def create_write_function(filename, bamfile, version):
             good, mol_list = q.get()
             if good is None: break
             if good:
+                mol = ''
                 for success, mol in mol_list:
                     if success:
-                        stitcher_bam.write(pysam.AlignedRead.fromstring(mol,header))
+                        read = pysam.AlignedRead.fromstring(mol,header)
+                        if mol == '':
+                            mol = read.get_tag('XT')
+                        stitcher_bam.write(read)
                     else:
                         error_file.write(mol)
-                error_file.write('Gene:{}\n'.format(pysam.AlignedRead.fromstring(mol,header).get_tag('XT')))
+                if mol != '':
+                    error_file.write('Gene:{}\n'.format(pysam.AlignedRead.fromstring(mol,header).get_tag('XT')))
             q.task_done()
         q.task_done()
         error_file.close()
