@@ -91,7 +91,7 @@ def using_indexed_assignment(x):
     result[temp] = np.arange(len(x))
     return result
 
-def stitch_reads(read_d, single_end, cell, gene, umi):
+def stitch_reads(read_d, single_end, cell, gene, umi, UMI_tag):
     master_read = {}
     seq_df = None
     qual_df = None
@@ -129,7 +129,7 @@ def stitch_reads(read_d, single_end, cell, gene, umi):
         ref_positions = read.get_reference_positions()
         skipped_intervals = get_skipped_tuples(cigtuples, ref_positions)
 
-        if read.is_read1 and not single_end and read.get_tag('UB') != '':
+        if read.is_read1 and not single_end and read.get_tag(UMI_tag) != '':
             reverse_read1.append(read.is_reverse)
         elif single_end:
             reverse_read1.append(read.is_reverse)
@@ -202,7 +202,7 @@ def stitch_reads(read_d, single_end, cell, gene, umi):
     master_read['cell'] = cell
     master_read['gene'] = gene
     master_read['umi'] = umi
-    return (True, convert_to_sam(master_read))
+    return (True, convert_to_sam(master_read, UMI_tag))
 
 def get_compatible_isoforms_stitcher(mol_list, isoform_dict_json,refskip_dict_json, h):
     isoform_dict = P.IntervalDict()
@@ -248,7 +248,7 @@ def get_compatible_isoforms_stitcher(mol_list, isoform_dict_json,refskip_dict_js
             continue
     return new_mol_list
 
-def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,refskip_dict_json,single_end,q):
+def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,refskip_dict_json,single_end,UMI_tag, q):
     readtrie = pygtrie.StringTrie()
     bam = pysam.AlignmentFile(bamfile, 'rb')
     gene_of_interest = gene_to_stitch['gene_id']
@@ -257,7 +257,7 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,refskip_d
         if cell_set is not None:
             if cell not in cell_set:
                 continue
-        umi = read.get_tag('UB')
+        umi = read.get_tag(UMI_tag)
         if umi == '':
             continue
         else:
@@ -303,9 +303,9 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,refskip_d
     mol_append = mol_list.append
     for node, mol in readtrie.iteritems():
         info = node.split('/')
-        n_read1 = np.sum([(r.is_read1)&(r.get_tag('UB') != '') for r in mol])
+        n_read1 = np.sum([(r.is_read1)&(r.get_tag(UMI_tag) != '') for r in mol])
         if n_read1 > 0:
-            mol_append(stitch_reads(mol, single_end, info[0], info[1], info[2]))
+            mol_append(stitch_reads(mol, single_end, info[0], info[1], info[2], UMI_tag))
     del readtrie
     mol_list = get_compatible_isoforms_stitcher(mol_list, isoform_dict_json,refskip_dict_json, bam.header)
     if len(mol_list) == 0:
@@ -351,7 +351,7 @@ def make_POS_and_CIGAR(stitched_m):
         del tuple_dict[c[0]][0]
     return POS, CIGAR, conflict, nreads_conflict, interval_list
 
-def convert_to_sam(stitched_m):
+def convert_to_sam(stitched_m, UMI_tag):
     sam_dict = {}
     POS, CIGAR, conflict, nreads_conflict, interval_list = make_POS_and_CIGAR(stitched_m)
     sam_dict['QNAME'] = '{}:{}:{}'.format(stitched_m['cell'],stitched_m['gene'],stitched_m['umi'])
@@ -370,7 +370,7 @@ def convert_to_sam(stitched_m):
     sam_dict['IR'] = 'IR:i:{}'.format(stitched_m['IR'])
     sam_dict['BC'] = 'BC:Z:{}'.format(stitched_m['cell'])
     sam_dict['XT'] = 'XT:Z:{}'.format(stitched_m['gene'])
-    sam_dict['UB'] = 'UB:Z:{}'.format(stitched_m['umi'])
+    sam_dict[UMI_tag] = '{}:Z:{}'.format(UMI_tag, stitched_m['umi'])
     #sam_dict['EL'] = 'EL:B:I,{}'.format(','.join([str(e) for e in stitched_m['ends']]))
     if conflict:
         sam_dict['NC'] = 'NC:i:{}'.format(nreads_conflict)
@@ -418,7 +418,7 @@ def create_write_function(filename, bamfile, version):
 def extract(d, keys):
     return dict((k, d[k]) for k in keys if k in d)
     
-def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfile, cells, contig, threads, single_end, q, version):
+def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfile, cells, contig, threads, single_end, UMI_tag, q, version):
     if cells is not None:
         cell_set = set([line.rstrip() for line in open(cells)])
     else:
@@ -446,7 +446,7 @@ def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfi
         isoform_unique_intervals = json.load(json_file)
     with open(junctionfile) as json_file:
         refskip_unique_intervals = json.load(json_file)
-    params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,isoform_unique_intervals[g],refskip_unique_intervals[g],single_end, q) for g,gene in gene_df.iterrows())
+    params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,isoform_unique_intervals[g],refskip_unique_intervals[g],single_end, UMI_tag, q) for g,gene in gene_df.iterrows())
 
 
     return None
@@ -460,6 +460,7 @@ if __name__ == '__main__':
     parser.add_argument('-jun','--junction', metavar='jun', type=str, help='json file with exon-exon structure')
     parser.add_argument('-t', '--threads', metavar='threads', type=int, default=1, help='Number of threads')
     parser.add_argument('--single-end', action='store_true', help='Activate flag if data is single-end')
+    parser.add_argument('--UMI-tag', type=str, default='UB', help='UMI tag to group reads')
     parser.add_argument('--cells', default=None, metavar='cells', type=str, help='List of cell barcodes to stitch molecules')
     parser.add_argument('--contig', default=None, metavar='contig', type=str, help='Restrict stitching to contig')
     parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + __version__)
@@ -479,6 +480,7 @@ if __name__ == '__main__':
     cells = args.cells
     contig = args.contig
     single_end = args.single_end
+    UMI_tag = args.UMI_tag
     m = Manager()
     q = m.JoinableQueue()
     p = Process(target=create_write_function(filename=outfile, bamfile=infile, version=__version__), args=(q,))
@@ -487,7 +489,7 @@ if __name__ == '__main__':
     print('Stitching reads for {}'.format(infile))
     
     start = time.time()
-    construct_stitched_molecules(infile, outfile, gtffile, isoformfile,junctionfile, cells, contig, threads,single_end,q, __version__)
+    construct_stitched_molecules(infile, outfile, gtffile, isoformfile,junctionfile, cells, contig, threads,single_end,UMI_tag, q, __version__)
     q.put((None,None))
     p.join()
     end = time.time()
