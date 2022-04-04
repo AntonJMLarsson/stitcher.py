@@ -114,8 +114,11 @@ def stitch_reads(read_d, single_end, cell, gene, umi, UMI_tag):
             intronic = True
         else:
             intronic = False
-
-        Q_list = list(read.query_alignment_qualities)
+        try:
+            Q_list = list(read.query_alignment_qualities)
+        except TypeError:
+            Q_list = [read.query_alignment_qualities]
+        
         seq = read.query_alignment_sequence
         cigtuples = read.cigartuples
         insertion_locs = get_insertions_locs(cigtuples)
