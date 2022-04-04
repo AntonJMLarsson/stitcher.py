@@ -419,7 +419,7 @@ def create_write_function(filename, bamfile, version):
 def extract(d, keys):
     return dict((k, d[k]) for k in keys if k in d)
     
-def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfile, cells, contig, threads, single_end, UMI_tag, q, version):
+def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfile, cells, gene_file, contig, threads, single_end, UMI_tag, q, version):
     if cells is not None:
         cell_set = set([line.rstrip() for line in open(cells)])
     else:
@@ -441,6 +441,10 @@ def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfi
                     gene_list.append({'gene_id': l[8].split(' ')[1].replace('"', '').strip(';\n'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
     gene_df = pd.DataFrame(gene_list)
     gene_df.index = gene_df['gene_id']
+    
+    if gene_file is not None:
+        gene_list = [line.rstrip() for line in open(gene_file)]
+        gene_df = gene_df.reindex(gene_list)
 
     print('Reading isoform info from {}'.format(isoformfile))
     with open(isoformfile) as json_file:
@@ -463,6 +467,7 @@ if __name__ == '__main__':
     parser.add_argument('--single-end', action='store_true', help='Activate flag if data is single-end')
     parser.add_argument('--UMI-tag', type=str, default='UB', help='UMI tag to group reads')
     parser.add_argument('--cells', default=None, metavar='cells', type=str, help='List of cell barcodes to stitch molecules')
+    parser.add_argument('--genes', default=None, metavar='genes', type=str, help='List of gene,  one per line.')
     parser.add_argument('--contig', default=None, metavar='contig', type=str, help='Restrict stitching to contig')
     parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + __version__)
     args = parser.parse_args()
@@ -479,6 +484,7 @@ if __name__ == '__main__':
     junctionfile = args.junction
     threads = int(args.threads)
     cells = args.cells
+    gene_file = args.cells
     contig = args.contig
     single_end = args.single_end
     UMI_tag = args.UMI_tag
@@ -490,7 +496,7 @@ if __name__ == '__main__':
     print('Stitching reads for {}'.format(infile))
     
     start = time.time()
-    construct_stitched_molecules(infile, outfile, gtffile, isoformfile,junctionfile, cells, contig, threads,single_end,UMI_tag, q, __version__)
+    construct_stitched_molecules(infile, outfile, gtffile, isoformfile,junctionfile, cells, gene_file, contig, threads,single_end,UMI_tag, q, __version__)
     q.put((None,None))
     p.join()
     end = time.time()
