@@ -119,12 +119,10 @@ def stitch_reads(read_d, single_end, cell, gene, umi, UMI_tag):
         seq = read.query_alignment_sequence
         cigtuples = read.cigartuples
         insertion_locs = get_insertions_locs(cigtuples)
-        try:
-            for loc in insertion_locs:
-                seq = seq[:loc] + seq[(loc+1):]
-                del Q_list[loc]
-        except IndexError:
-            continue
+        
+        if len(insertion_locs) > 0:
+            seq = "".join([char for idx, char in enumerate(seq) if idx not in insertion_locs])
+            Q_list = [qual for idx, qual in enumerate(Q_list) if idx not in insertion_locs]
 
         ref_positions = read.get_reference_positions()
         skipped_intervals = get_skipped_tuples(cigtuples, ref_positions)
