@@ -443,8 +443,9 @@ def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfi
     gene_df.index = gene_df['gene_id']
     
     if gene_file is not None:
-        gene_list = [line.rstrip() for line in open(gene_file)]
-        gene_df = gene_df.reindex(gene_list)
+        gene_subset = [line.rstrip() for line in open(gene_file)]
+        gene_df = gene_df.reindex(gene_subset)
+    print(gene_df.head())
 
     print('Reading isoform info from {}'.format(isoformfile))
     with open(isoformfile) as json_file:
@@ -484,7 +485,7 @@ if __name__ == '__main__':
     junctionfile = args.junction
     threads = int(args.threads)
     cells = args.cells
-    gene_file = args.cells
+    gene_file = args.genes
     contig = args.contig
     single_end = args.single_end
     UMI_tag = args.UMI_tag
