@@ -3,7 +3,7 @@
 # anton jm larsson anton.larsson@ki.se
 import argparse
 import pysam
-import pandas as pd
+import warnings
 import numpy as np
 import pygtrie
 import portion as P
@@ -308,7 +308,8 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,refskip_d
         if n_read1 > 0:
             mol_append(stitch_reads(mol, single_end, info[0], info[1], info[2], UMI_tag))
     del readtrie
-    mol_list = get_compatible_isoforms_stitcher(mol_list, isoform_dict_json,refskip_dict_json, bam.header)
+    if isoform_dict_json is not None:
+        mol_list = get_compatible_isoforms_stitcher(mol_list, isoform_dict_json,refskip_dict_json, bam.header)
     if len(mol_list) == 0:
         return gene_of_interest
     if len(mol_list) > 50000:
@@ -419,7 +420,7 @@ def create_write_function(filename, bamfile, version):
 def extract(d, keys):
     return dict((k, d[k]) for k in keys if k in d)
     
-def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfile, cells, gene_file, contig, threads, single_end, UMI_tag, gene_identifier, q, version):
+def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfile, cells, gene_file, contig, threads, single_end, UMI_tag, gene_identifier, skip_iso, q, version):
     if cells is not None:
         cell_set = set([line.rstrip() for line in open(cells)])
     else:
@@ -451,20 +452,32 @@ def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfi
                         gene_list.append({'gene_id': l[8].split(' ')[n].replace('"', '').strip(';\n'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
                     except:
                         gene_list.append({'gene_id': l[8].split(' ')[1].replace('"', '').strip(';\n'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
-    gene_df = pd.DataFrame(gene_list)
-    gene_df.index = gene_df['gene_id']
+    gene_dict = {g['gene_id']: g for g in gene_list}
     
     if gene_file is not None and gene_file != 'None':
-        gene_subset = [line.rstrip() for line in open(gene_file)]
-        gene_df = gene_df.reindex(gene_subset)
+        gene_set = set([line.rstrip() for line in open(gene_file)])
+        gene_dict = {k:v for k,v in gene_dict.items() if k in gene_set}
+    bam = pysam.AlignmentFile(infile, 'rb')
+    contig_set = set([d['SN'] for d in bam.header['SQ']])
+    prev_l = len(gene_dict)
+    gene_dict = {k:v for k,v in gene_dict.items() if v['seqid'] in contig_set}
+    new_l = len(gene_dict)
+    diff_l = prev_l - new_l
+    print(prev_l, new_l)
+    if diff_l > 0:
+        warnings.warn('Warning: removed {diff_l} genes with contig not present in bam file'.format(diff_l=diff_l))
+    bam.close()
     print(gene_df.head())
-
-    print('Reading isoform info from {}'.format(isoformfile))
-    with open(isoformfile) as json_file:
-        isoform_unique_intervals = json.load(json_file)
-    with open(junctionfile) as json_file:
-        refskip_unique_intervals = json.load(json_file)
-    params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,isoform_unique_intervals[g],refskip_unique_intervals[g],single_end, UMI_tag, q) for g,gene in gene_df.iterrows())
+    if skip_iso:
+        print('Skipping isoform info')
+        params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,None, None, single_end, UMI_tag, q) for g,gene in gene_df.iterrows())
+    else:    
+        print('Reading isoform info from {}'.format(isoformfile))
+        with open(isoformfile) as json_file:
+            isoform_unique_intervals = json.load(json_file)
+        with open(junctionfile) as json_file:
+            refskip_unique_intervals = json.load(json_file)
+        params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,isoform_unique_intervals[g],refskip_unique_intervals[g],single_end, UMI_tag, q) for g,gene in gene_df.iterrows())
 
 
     return None
@@ -478,6 +491,7 @@ if __name__ == '__main__':
     parser.add_argument('-jun','--junction', metavar='jun', type=str, help='json file with exon-exon structure')
     parser.add_argument('-t', '--threads', metavar='threads', type=int, default=1, help='Number of threads')
     parser.add_argument('--single-end', action='store_true', help='Activate flag if data is single-end')
+    parser.add_argument('--skip-iso', action='store_true', help='Skip isoform calling')
     parser.add_argument('--UMI-tag', type=str, default='UB', help='UMI tag to group reads')
     parser.add_argument('--cells', default=None, metavar='cells', type=str, help='List of cell barcodes to stitch molecules')
     parser.add_argument('--genes', default=None, metavar='genes', type=str, help='List of gene,  one per line.')
@@ -494,8 +508,13 @@ if __name__ == '__main__':
     gtffile = args.gtf  
     if gtffile is None:
         raise Exception('No gtf file provided.')
-    isoformfile = args.isoform
-    junctionfile = args.junction
+    skip_iso = args.skip_iso
+    if not skip_iso:
+        isoformfile = args.isoform
+        junctionfile = args.junction
+    else:
+        isoformfile = ''
+        junctionfile = ''
     threads = int(args.threads)
     cells = args.cells
     gene_file = args.genes
@@ -511,7 +530,7 @@ if __name__ == '__main__':
     print('Stitching reads for {}'.format(infile))
     
     start = time.time()
-    construct_stitched_molecules(infile, outfile, gtffile, isoformfile,junctionfile, cells, gene_file, contig, threads,single_end,UMI_tag,gene_identifier, q, __version__)
+    construct_stitched_molecules(infile, outfile, gtffile, isoformfile,junctionfile, cells, gene_file, contig, threads,single_end,UMI_tag,gene_identifier, skip_iso, q, __version__)
     q.put((None,None))
     p.join()
     end = time.time()
