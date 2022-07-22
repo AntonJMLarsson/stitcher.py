@@ -482,6 +482,7 @@ if __name__ == '__main__':
     parser.add_argument('--cells', default=None, metavar='cells', type=str, help='List of cell barcodes to stitch molecules')
     parser.add_argument('--genes', default=None, metavar='genes', type=str, help='List of gene,  one per line.')
     parser.add_argument('--contig', default=None, metavar='contig', type=str, help='Restrict stitching to contig')
+    parser.add_argument('--gene-identifier', default='gene_id', metavar='gene_identifier', type=str, help='Gene identifier (gene_id or gene_name)')
     parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + __version__)
     args = parser.parse_args()
     infile = args.input
@@ -501,6 +502,7 @@ if __name__ == '__main__':
     contig = args.contig
     single_end = args.single_end
     UMI_tag = args.UMI_tag
+    gene_identifier = args.gene_identifier
     m = Manager()
     q = m.JoinableQueue()
     p = Process(target=create_write_function(filename=outfile, bamfile=infile, version=__version__), args=(q,))
@@ -509,7 +511,7 @@ if __name__ == '__main__':
     print('Stitching reads for {}'.format(infile))
     
     start = time.time()
-    construct_stitched_molecules(infile, outfile, gtffile, isoformfile,junctionfile, cells, gene_file, contig, threads,single_end,UMI_tag, q, __version__)
+    construct_stitched_molecules(infile, outfile, gtffile, isoformfile,junctionfile, cells, gene_file, contig, threads,single_end,UMI_tag,gene_identifier, q, __version__)
     q.put((None,None))
     p.join()
     end = time.time()
