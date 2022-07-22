@@ -90,6 +90,6 @@ gtf_to_json.py [-h] [-g gtf] [-d db] [-j json] [-t threads]
 ```
 ### Example
 ```
-python3 gtf_to_json.py -g Mus_musculus.GRCm38.91.chr.clean.gtf -d Mus_musculus.GRCm38.91.chr.clean.db -j Mus_musculus.GRCm38.91.chr.clean.json -t 2
+python3 gtf_to_json.py -g Mus_musculus.GRCm38.91.chr.clean.gtf -d Mus_musculus.GRCm38.91.chr.clean.db -ji Mus_musculus.GRCm38.91.chr.clean.intervals.json -jr Mus_musculus.GRCm38.91.chr.clean.refskip.json -t 5
 
 ```
