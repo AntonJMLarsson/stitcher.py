@@ -406,7 +406,7 @@ def create_write_function(filename, bamfile, version):
                             g = read.get_tag('XT')
                         stitcher_bam.write(read)
                     else:
-                        error_file.write(mol)
+                        error_file.write(mol+'\n')
                 if g != '':
                     error_file.write('Gene:{}\n'.format(g))
             q.task_done()
@@ -419,13 +419,19 @@ def create_write_function(filename, bamfile, version):
 def extract(d, keys):
     return dict((k, d[k]) for k in keys if k in d)
     
-def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfile, cells, gene_file, contig, threads, single_end, UMI_tag, q, version):
+def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfile, cells, gene_file, contig, threads, single_end, UMI_tag, gene_identifier, q, version):
     if cells is not None:
         cell_set = set([line.rstrip() for line in open(cells)])
     else:
         cell_set = None
     print('Reading gene info from {}'.format(gtffile))
     gene_list = []
+    if gene_identifier == 'gene_id':
+        n = 1
+    elif gene_identifier == 'gene_name':
+        n = 5
+    else:
+        n = 1
     with open(gtffile, 'r') as f:
         for line in f:
             l = line.split('\t')
@@ -434,15 +440,21 @@ def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfi
             if l[2] == 'gene':
                 if contig is not None:
                     if l[0] == contig:
-                        gene_list.append({'gene_id': l[8].split(' ')[1].replace('"', '').strip(';\n'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
+                        try:
+                            gene_list.append({'gene_id': l[8].split(' ')[n].replace('"', '').strip(';\n'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
+                        except:
+                            gene_list.append({'gene_id': l[8].split(' ')[1].replace('"', '').strip(';\n'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
                     else:
                         continue
                 else:
-                    gene_list.append({'gene_id': l[8].split(' ')[1].replace('"', '').strip(';\n'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
+                    try:
+                        gene_list.append({'gene_id': l[8].split(' ')[n].replace('"', '').strip(';\n'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
+                    except:
+                        gene_list.append({'gene_id': l[8].split(' ')[1].replace('"', '').strip(';\n'), 'seqid':l[0], 'start':int(l[3]), 'end':int(l[4])})
     gene_df = pd.DataFrame(gene_list)
     gene_df.index = gene_df['gene_id']
     
-    if gene_file is not None:
+    if gene_file is not None and gene_file != 'None':
         gene_subset = [line.rstrip() for line in open(gene_file)]
         gene_df = gene_df.reindex(gene_subset)
     print(gene_df.head())
