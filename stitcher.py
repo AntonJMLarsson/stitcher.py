@@ -467,17 +467,16 @@ def construct_stitched_molecules(infile, outfile,gtffile,isoformfile, junctionfi
     if diff_l > 0:
         warnings.warn('Warning: removed {diff_l} genes with contig not present in bam file'.format(diff_l=diff_l))
     bam.close()
-    print(gene_df.head())
     if skip_iso:
         print('Skipping isoform info')
-        params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,None, None, single_end, UMI_tag, q) for g,gene in gene_df.iterrows())
+        params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,None, None, single_end, UMI_tag, q) for g,gene in gene_dict.items())
     else:    
         print('Reading isoform info from {}'.format(isoformfile))
         with open(isoformfile) as json_file:
             isoform_unique_intervals = json.load(json_file)
         with open(junctionfile) as json_file:
             refskip_unique_intervals = json.load(json_file)
-        params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,isoform_unique_intervals[g],refskip_unique_intervals[g],single_end, UMI_tag, q) for g,gene in gene_df.iterrows())
+        params = Parallel(n_jobs=threads, verbose = 3, backend='loky')(delayed(assemble_reads)(infile, gene, cell_set,isoform_unique_intervals[g],refskip_unique_intervals[g],single_end, UMI_tag, q) for g,gene in gene_dict.items())
 
 
     return None
