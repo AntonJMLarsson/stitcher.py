@@ -254,7 +254,10 @@ def assemble_reads(bamfile,gene_to_stitch, cell_set, isoform_dict_json,refskip_d
     bam = pysam.AlignmentFile(bamfile, 'rb')
     gene_of_interest = gene_to_stitch['gene_id']
     for read in bam.fetch(gene_to_stitch['seqid'], gene_to_stitch['start'], gene_to_stitch['end']):
-        cell = read.get_tag('CB')
+        if read.has_tag('CB'):
+            cell = read.get_tag('CB')
+        else:
+            continue
         if cell_set is not None:
             if cell not in cell_set:
                 continue
