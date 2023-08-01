@@ -524,7 +524,7 @@ if __name__ == '__main__':
     contig = args.contig
     single_end = args.single_end
     UMI_tag = args.UMI_tag
-    cell_Tag = args.cell_tag
+    cell_tag = args.cell_tag
     gene_identifier = args.gene_identifier
     m = Manager()
     q = m.JoinableQueue()
